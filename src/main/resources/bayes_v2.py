@@ -7,15 +7,13 @@ import numpy
 
 liste = sys.argv[1].replace("],[", "],[")
 
-
-
 print(liste)
 print(numpy.array(eval(liste.split()[0])))
 
-train_X = numpy.array(numpy.array(eval(liste.split()[0])),dtype=float)
-train_Y = numpy.array(sys.argv[2].split(','),dtype=float)
-test_X = numpy.array(numpy.array(eval(sys.argv[3].split()[0])),dtype=float)
-test_Y = numpy.array(sys.argv[4].split(','),dtype=float)
+train_X = numpy.array(numpy.array(eval(liste.split()[0])), dtype=float)
+train_Y = numpy.array(sys.argv[2].split(','), dtype=float)
+test_X = numpy.array(numpy.array(eval(sys.argv[3].split()[0])), dtype=float)
+test_Y = numpy.array(sys.argv[4].split(','), dtype=float)
 
 # Creating and training model
 model = BayesianRidge(compute_score=True, fit_intercept=True)
