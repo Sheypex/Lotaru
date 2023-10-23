@@ -86,6 +86,7 @@ public class Main {
 
         ArrayList<Septet<String, String, String, double[], double[], double[], double[]>> estimates = new ArrayList<>();
 
+        Estimator lotaruA = new LotaruA(); // don't spawn a new instance of this each iteration -> preserve the embedded python interpreter
         localTrainingGrouped.keySet().forEach(key -> {
             var trainingDataPoints = localTrainingGrouped.get(key);
             var trainingDataPointsReducedFrequency = localTrainingReducedFrquencyGrouped.get(key);
@@ -131,7 +132,6 @@ public class Main {
             Estimator onlineP = new Online(false, "OnlineP");
             Estimator onlineM = new Online(true, "OnlineM");
             Estimator naive = new Naive(true, "Naive");
-            Estimator lotaruA = new LotaruA();
             Estimator perfect = new Perfect();
 
 

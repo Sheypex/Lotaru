@@ -1,5 +1,8 @@
 package estimators;
 
+import jep.Interpreter;
+import jep.JepException;
+import jep.SharedInterpreter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.correlation.PearsonsCorrelation;
@@ -9,11 +12,31 @@ import org.javatuples.Septet;
 import org.javatuples.Sextet;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class LotaruA implements Estimator {
+    Interpreter interp; // jep requires a python environment with the python equivalent installed
+    // pip install jep
+    // additionally, make sure sklearn and numpy are available to python
+
+    public LotaruA() {
+        interp = new SharedInterpreter();
+        try { // do imports only once
+            interp.exec("from sklearn.metrics import r2_score");
+            interp.exec("from sklearn.linear_model import BayesianRidge");
+            interp.exec("from sklearn.linear_model import LinearRegression");
+            interp.exec("import numpy");
+
+            interp.exec("numpy.set_printoptions(threshold=numpy.inf)");
+            interp.exec("numpy.set_printoptions(linewidth=numpy.inf)");
+        } catch (JepException e) {
+            throw new RuntimeException("Python imports failed. Cant run LotaruA", e);
+        }
+    }
+
     public Septet<String, String, String, double[], double[], double[], double[]> estimateWith1DInput(String taskname, String resourceToPredict, double[] ids, double[] train_x, double[] train_y, double[] test_x, double[] test_y, double factor) {
 
         // Extra Parameter nicht train_X zurück geben
@@ -43,44 +66,53 @@ public class LotaruA implements Estimator {
             }
 
 
-
-                return new Septet<>(taskname, "Lotaru-A", resourceToPredict, ids, median_predicted_arr, test_y, toReturnError);
+            return new Septet<>(taskname, "Lotaru-A", resourceToPredict, ids, median_predicted_arr, test_y, toReturnError);
         }
 
-        ProcessBuilder processBuilder = new ProcessBuilder("python3", resolvePythonScriptPath("bayes.py"), StringUtils.join(train_x, ','), StringUtils.join(train_y, ','), StringUtils.join(test_x, ','), StringUtils.join(test_y, ','));
-        processBuilder.redirectErrorStream(true);
-
-        double predicted[] = new double[test_y.length];
+        try {
+            interp.set("input_trX", train_x);
+            interp.exec("train_X = numpy.array(input_trX, dtype=float)");
+            interp.set("input_trY", train_y);
+            interp.exec("train_Y = numpy.array(input_trY, dtype=float)");
+            interp.set("input_teX", test_x);
+            interp.exec("test_X = numpy.array(input_teX, dtype=float)");
+            interp.set("input_trY", test_y);
+            interp.exec("test_Y = numpy.array(input_trY, dtype=float)");
+        } catch (JepException e) {
+            throw new RuntimeException("Failed to transfer input data to python bayes", e);
+        }
 
         try {
-            Process process = processBuilder.start();
-            process.waitFor();
-            List<String> results = readProcessOutput(process.getInputStream());
+            // Creating and training model
+            interp.exec("model = BayesianRidge(fit_intercept=True)");
+            interp.exec("model.fit(train_X.reshape(-1, 1), train_Y)");
+        } catch (JepException e) {
+            throw new RuntimeException("Failed to fit python bayes", e);
+        }
 
-            for (String s : results) {
-                if (s.contains("Prediction:")) {
-                    predicted = Arrays.stream(s.split("\\[")[1].substring(0, s.split("\\[")[1].length() - 1).split(" ")).filter(str -> NumberUtils.isCreatable(str)).map(reg -> Double.valueOf(reg) * factor).mapToDouble(Double::valueOf).toArray();
+        try {
+            // Model making a prediction on test data
+            interp.exec("prediction = model.predict(test_X.reshape(-1, 1))");
+        } catch (JepException e) {
+            throw new RuntimeException("Couldn't get bayes prediction", e);
+        }
+
+        try {
+            ArrayList<Double> tmp = interp.getValue("list(prediction)", ArrayList.class);
+            double[] predicted = tmp.stream().map(x -> x * factor).mapToDouble(Double::valueOf).toArray();
+
+            double[] toReturnError = new double[test_y.length];
+            for (int i = 0; i < predicted.length; i++) {
+                toReturnError[i] = Math.abs((predicted[i] - test_y[i]) / test_y[i]);
+                if (toReturnError[i] > 1) {
+                    System.out.println(i);
                 }
             }
 
-            int exitCode = 0;
-
-            exitCode = process.waitFor();
-        } catch (Exception e) {
-            e.printStackTrace();
+            return new Septet<>(taskname, "Lotaru-A", resourceToPredict, ids, predicted, test_y, toReturnError);
+        } catch (JepException e) {
+            throw new RuntimeException("Couldn't get results from python bayes", e);
         }
-
-        double[] toReturnError = new double[test_y.length];
-
-        for (int i = 0; i < predicted.length; i++) {
-            toReturnError[i] = Math.abs((predicted[i] - test_y[i]) / test_y[i]);
-            if (toReturnError[i] > 1) {
-                System.out.println(i);
-            }
-        }
-
-        return new Septet<>(taskname, "Lotaru-A", resourceToPredict, ids, predicted, test_y, toReturnError);
-
     }
 
 
